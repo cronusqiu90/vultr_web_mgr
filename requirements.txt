@@ -1,4 +1,7 @@
-Django==3.2.25
 celery==5.0.5
+Django==3.2.25
 django-celery-beat==2.2.0
+loguru==0.7.3
+requests==2.32.3
 SQLAlchemy==2.0.36
+python-dotenv==1.0.1

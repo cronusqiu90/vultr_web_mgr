@@ -36,3 +36,11 @@
 *.backup.*
 *.bkp.*
 data/
+.idea/
+.vscode/
+.history/
+.DS_Store
+.env
+.venv/
+__pycache__/
+static/

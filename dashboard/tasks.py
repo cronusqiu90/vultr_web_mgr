@@ -3,134 +3,101 @@ from celery import shared_task
 from loguru import logger as log
 
 from .models import User, Instance
+from .vendor import vultr, dingtalk
 
 
-vultr_api = "https://api.vultr.com/v2/"
-
-
-
-
+# 根据 user.api_token 完善用户个人信息
 @shared_task(name="update_user_info", ignore_result=True)
-def update_user_infomation(pk):
+def update_user_information(pk):
     user = User.objects.get(pk=pk)
     try:
-        resp = requests.get(
-            url="https://api.vultr.com/v2/account", 
-            headers={"Authorization": f"Bearer {user.api_token }"},
-            timeout=55
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        user.email = data['account']['email']
-        user.name = data['account']['name']
-        user.balance = data['account']['balance']
-        user.last_payment_date = data['account']['last_payment_date']
-        user.last_payment_amount = data['account']['last_payment_amount']
+        data = vultr.get_account(user.api_token)
+        user.update_one(data)
         user.save()
     except requests.exceptions.RequestException as err:
         log.exception(err)
         return
 
 
+# 更新单台节点信息
 @shared_task(name="update_instance_info", ignore_result=True)
 def update_instance_info(pk):
     instance = Instance.objects.get(pk=pk)
-
     try:
-        resp = requests.get(
-            url=f"https://api.vultr.com/v2/instances/{instance.uuid}",
-            headers={"Authorization": f"Bearer {instance.user.api_token}"},
-            timeout=55
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        instance.os = data['instance']['os']
-        instance.ram = data['instance']['ram']
-        instance.disk = data['instance']['disk']
-        instance.main_ip = data['instance']['main_ip']
-        instance.vcpu_count = data['instance']['vcpu_count']
-        instance.region = data['instance']['region']
-        instance.plan = data['instance']['plan']
-        instance.date_created = data['instance']['date_created']
-        instance.status = data['instance']['status']
-        instance.allowed_bandwidth = data['instance']['allowed_bandwidth']
-        instance.netmask_v4 = data['instance']['netmask_v4']
-        instance.gateway_v4 = data['instance']['gateway_v4']
-        instance.power_status = data['instance']['power_status']
-        instance.server_status = data['instance']['server_status']
-        instance.v6_network = data['instance']['v6_network']
-        instance.v6_main_ip = data['instance']['v6_main_ip']
-        instance.v6_network_size = data['instance']['v6_network_size']
-        instance.label = data['instance']['label']
-        instance.internal_ip = data['instance']['internal_ip']
-        instance.kvm = data['instance']['kvm']
-        instance.hostname = data['instance']['hostname']
-        instance.tag = data['instance']['tag']
-        instance.tags = data['instance']['tags']
-        instance.os_id = data['instance']['os_id']
-        instance.app_id = data['instance']['app_id']
-        instance.image_id = data['instance']['image_id']
-        instance.firewall_group_id = data['instance']['firewall_group_id']
-        instance.features = data['instance']['features']
-        instance.user_scheme = data['instance']['user_scheme']
-        if "pending_charges" in data['instance']:
-            instance.pending_charges = data['instance']['pending_charges']
+        data = vultr.get_instance(instance.user.api_token, instance.uuid)
+        instance.update_one(data)
         instance.save()
     except requests.exceptions.RequestException as err:
         log.exception(err)
         return
 
 
+# 更新用户所属所有节点信息
 @shared_task(name="update_all_instance_by_user", igngore_result=True)
 def update_all_instance_by_user(pk):
     user = User.objects.get(pk=pk)
     try:
-        resp = requests.get(
-            url="https://api.vultr.com/v2/instances",
-            headers={"Authorization": f"Bearer {user.api_token }"},
-            timeout=55
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        for row in data['instances']:
-            uuid = row['uuid']
+        data = vultr.list_instances(user.api_token)
+        for row in data["instances"]:
+            uuid = row["id"]
             instance, ok = Instance.objects.get_or_create(uuid=uuid, user=user)
-            instance.os = row['os']
-            instance.ram = row['ram']
-            instance.disk = row['disk']
-            instance.main_ip = row['main_ip']
-            instance.vcpu_count = row['vcpu_count']
-            instance.region = row['region']
-            instance.plan = row['plan']
-            instance.date_created = row['date_created']
-            instance.status = row['status']
-            instance.allowed_bandwidth = row['allowed_bandwidth']
-            instance.netmask_v4 = row['netmask_v4']
-            instance.gateway_v4 = row['gateway_v4']
-            instance.power_status = row['power_status']
-            instance.server_status = row['server_status']
-            instance.v6_network = row['v6_network']
-            instance.v6_main_ip = row['v6_main_ip']
-            instance.v6_network_size = row['v6_network_size']
-            instance.label = row['label']
-            instance.internal_ip = row['internal_ip']
-            instance.kvm = row['kvm']
-            instance.hostname = row['hostname']
-            instance.tag = row['tag']
-            instance.tags = row['tags']
-            instance.os_id = row['os_id']
-            instance.app_id = row['app_id']
-            instance.image_id = row['image_id']
-            instance.firewall_group_id = row['firewall_group_id']
-            instance.features = row['features']
-            instance.user_scheme = row['user_scheme']
-            if "pending_charges" in row:
-                instance.pending_charges = row['pending_charges']
+            instance.update_one(row)
             instance.save()
     except requests.exceptions.RequestException as err:
         log.exception(err)
         return
 
-@shared_task(name="cleanup_tasks", ignore_result=True)
-def cleanup_tasks():
-    pass
+
+# 检查节点的状态
+@shared_task(name="check_instance_status", ignore_result=True)
+def check_instance_status():
+    alarm = ""
+    # 先更新所有节点信息
+    for user in User.objects.all():
+        try:
+            instances = vultr.list_instances(user.api_token)
+            for row in instances["instances"]:
+                uuid = row["id"]
+                instance, ok = Instance.objects.get_or_create(uuid=uuid, user=user)
+                instance.update_one(row)
+                instance.save()
+
+                if (
+                    instance.status != "active"
+                    or instance.server_state != "ok"
+                    or instance.power_status != "running"
+                ):
+                    alarm += f"实例: %-8s  状态: %s  评估: %s  电源: %s\n" % (
+                        instance.hostname,
+                        instance.status,
+                        instance.server_state,
+                        instance.power_status,
+                    )
+                    continue
+        except requests.exceptions.RequestException as err:
+            log.exception(err)
+            continue
+    if alarm:
+        alarm = "[通知] Vultr 实例状态通知\n\n" + alarm
+        r = dingtalk.notify_alarm(alarm)
+        log.info(f"alarm: {r}")
+
+
+# 检查用户余额
+@shared_task(name="check_users_remain_credit", ignore_result=True)
+def check_users_remain_credit():
+    alarm = ""
+    for user in User.objects.all():
+        try:
+            data = vultr.get_account(user.api_token)
+            user.update_one(data)
+            user.save()
+            if user.balance <= user.min_spent_monthly:
+                alarm += f"账号: %-30s 余额: %3.2f\n" % (user.email, user.balance)
+        except requests.exceptions.RequestException as err:
+            log.error(f"failed to update user({user.email}): {err}")
+            continue
+    if alarm:
+        alarm = "[通知] Vultr 账号余额不足通知\n\n" + alarm
+        r = dingtalk.notify_alarm(alarm)
+        log.info(f"alarm: {r}")
