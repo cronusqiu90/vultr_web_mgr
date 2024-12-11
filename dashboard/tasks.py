@@ -48,6 +48,14 @@ def update_all_instance_by_user(pk):
         return
 
 
+@shared_task(name="reboot_instances", ignore_result=True)
+def reboot_vultr_instances(api_token, uuids):
+    try:
+        vultr.reboot_instances(api_token, uuids)
+    except requests.exceptions.RequestException as err:
+        log.exception(err)
+
+
 # 检查节点的状态
 @shared_task(name="check_instance_status", ignore_result=True)
 def check_instance_status():
@@ -63,9 +71,9 @@ def check_instance_status():
                 instance.save()
 
                 if (
-                    instance.status != "active"
-                    or instance.server_state != "ok"
-                    or instance.power_status != "running"
+                        instance.status != "active"
+                        or instance.server_state != "ok"
+                        or instance.power_status != "running"
                 ):
                     alarm += f"实例: %-8s  状态: %s  评估: %s  电源: %s\n" % (
                         instance.hostname,

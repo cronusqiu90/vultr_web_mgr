@@ -29,3 +29,13 @@ def list_instances(api_token):
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def reboot_instances(api_token, uuids):
+    resp = requests.post(
+        url="https://api.vultr.com/v2/instances/reboot",
+        headers={"Authorization": f"Bearer {api_token}"},
+        json={"instance_ids": uuids},
+        timeout=55,
+    )
+    resp.raise_for_status()

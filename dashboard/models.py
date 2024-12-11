@@ -9,7 +9,6 @@ class User(models.Model):
         (0, "Server"),
         (1, "Vultr"),
     )
-
     type_name = models.IntegerField("类型", choices=type_enums, default=0, null=False,
                                     blank=False)
     api_token = models.CharField("Token", max_length=255, null=False, blank=False,

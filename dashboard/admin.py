@@ -1,43 +1,15 @@
 from typing import Any
+
 from django.contrib import admin
 from django.utils import timezone
 
 # Register your models here.
 from .models import User, Instance
-
-from .tasks import (
-    update_instance_info,
-    update_user_information,
-    update_all_instance_by_user,
-)
+from . import actions
 
 admin.site.site_header = "Dashboard"  # 设置header
 admin.site.site_title = "Dashboard"  # 设置title
 admin.site.index_title = "Dashboard"
-
-
-@admin.action(description="重启服务器")
-def reboot_selected_instances(modeladmin, request, queryset):
-    pass
-
-
-@admin.action(description="更新账号信息")
-def update_selected_users(modeladmin, request, queryset):
-    for user in queryset:
-        update_user_information.apply_async(args=[user.pk])  # type: ignore
-
-
-@admin.action(description="更新账号所属服务器列表")
-def update_instance_list(modeladmin, request, queryset):
-    for user in queryset:
-        update_all_instance_by_user.apply_async(args=[user.pk])  # type: ignore
-
-
-@admin.action(description="更新选中服务器信息")
-def update_selected_instance(modeladmin, request, queryset):
-    for instance in queryset:
-        update_instance_info.apply_async(args=[instance.pk])  # type: ignore
-
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -52,7 +24,7 @@ class UserAdmin(admin.ModelAdmin):
         "updated_at",
     )
     list_display_links = ("email",)
-    list_filter = ("type_name", )
+    list_filter = ("type_name",)
     sorted_by = ("balance",)
     readonly_fields = (
         "email",
@@ -63,7 +35,7 @@ class UserAdmin(admin.ModelAdmin):
         "last_payment_amount",
     )
 
-    actions = [update_instance_list, update_selected_users]
+    actions = [actions.update_instance_list, actions.update_selected_users]
 
     def save_model(self, request: Any, obj: User, form: Any, change: Any) -> None:
         obj.updated_at = timezone.now()
@@ -129,7 +101,7 @@ class InstanceAdmin(admin.ModelAdmin):
         "user",
         "updated_at",
     )
-    actions = [update_selected_instance, reboot_selected_instances]
+    actions = [actions.update_selected_instance, actions.reboot_selected_instances]
 
     def save_model(self, request: Any, obj: Any, form: Any, change: Any) -> None:
         obj.updated_at = timezone.now()
