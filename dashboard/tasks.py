@@ -72,7 +72,7 @@ def check_instance_status():
 
                 if (
                         instance.status != "active"
-                        or instance.server_state != "ok"
+                        or instance.server_status != "ok"
                         or instance.power_status != "running"
                 ):
                     alarm += f"实例: %-8s  状态: %s  评估: %s  电源: %s\n" % (
