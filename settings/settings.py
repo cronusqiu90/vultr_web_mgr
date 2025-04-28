@@ -28,7 +28,7 @@ SECRET_KEY = "django-insecure-rrb1lud%9svbec$vi$-%!v#q_s&3)z&(0nl^+ft7($dq#uggb!
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["mytree.vultr.com", "127.0.0.1"]
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
